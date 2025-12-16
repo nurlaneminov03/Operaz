@@ -1,1 +1,131 @@
+#!/bin/bash
+
+# ==============================
+# Глобальные переменные
+# ==============================
+LOG_FILE=""
+ERR_FILE=""
+
+# ==============================
+# Функция вывода справки
+# ==============================
+show_help() {
+    cat << EOF
+Использование: $0 [OPTIONS]
+
+Опции:
+  -u, --users           Показать пользователей и их домашние директории
+  -p, --processes       Показать запущенные процессы (по PID)
+  -l, --log PATH        Записать вывод в файл PATH
+  -e, --errors PATH     Записать ошибки в файл PATH
+  -h, --help            Показать эту справку
+EOF
+    exit 0
+}
+
+# ==============================
+# Проверка доступа к файлу
+# ==============================
+check_path() {
+    local path="$1"
+    local type="$2"
+
+    if ! touch "$path" 2>/dev/null; then
+        echo "Ошибка: нет доступа для записи в $type файл: $path" >&2
+        exit 1
+    fi
+}
+
+# ==============================
+# Вывод пользователей
+# ==============================
+show_users() {
+    getent passwd 2>/dev/null | \
+    awk -F: '{print $1 " -> " $6}' | \
+    sort
+}
+
+# ==============================
+# Вывод процессов
+# ==============================
+show_processes() {
+    ps -eo pid,comm --no-headers 2>/dev/null | sort -n
+}
+
+# ==============================
+# Разбор аргументов (getopt)
+# ==============================
+OPTIONS=$(getopt -o upl:e:h \
+    --long users,processes,log:,errors:,help \
+    -n "$0" -- "$@")
+
+if [ $? != 0 ]; then
+    echo "Ошибка аргументов" >&2
+    exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+DO_USERS=false
+DO_PROCESSES=false
+
+while true; do
+    case "$1" in
+        -u|--users)
+            DO_USERS=true
+            shift
+            ;;
+        -p|--processes)
+            DO_PROCESSES=true
+            shift
+            ;;
+        -l|--log)
+            LOG_FILE="$2"
+            check_path "$LOG_FILE" "log"
+            shift 2
+            ;;
+        -e|--errors)
+            ERR_FILE="$2"
+            check_path "$ERR_FILE" "errors"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# ==============================
+# Перенаправления
+# ==============================
+if [ -n "$LOG_FILE" ]; then
+    exec 1>"$LOG_FILE"
+fi
+
+if [ -n "$ERR_FILE" ]; then
+    exec 2>"$ERR_FILE"
+fi
+
+# ==============================
+# Выполнение действий
+# ==============================
+if $DO_USERS; then
+    show_users
+fi
+
+if $DO_PROCESSES; then
+    show_processes
+fi
+
+if ! $DO_USERS && ! $DO_PROCESSES; then
+    echo "Ошибка: не указано действие. Используйте --help" >&2
+    exit 1
+fi
 
